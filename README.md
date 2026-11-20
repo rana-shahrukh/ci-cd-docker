@@ -222,66 +222,6 @@ The workflow files live in `.github/workflows/`. On every push to `main`, the pi
 | 2   | **Build & Push** | Builds the Docker image and pushes it to Docker Hub |
 | 3   | **Deploy**       | Connects to EC2 via SSH, pulls the image, restarts the container |
 
-If the tests fail, the pipeline stops and nothing is deployed. That is your safety net.
-
-### Example workflow
-
-```yaml
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm test
-
-  build-and-push:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/docker-cicd:latest
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/docker-cicd:latest
-            docker stop docker-cicd-app || true
-            docker rm docker-cicd-app || true
-            docker run -d --name docker-cicd-app -p 80:3000 \
-              ${{ secrets.DOCKERHUB_USERNAME }}/docker-cicd:latest
-```
-
----
-
 ## 🔐 GitHub Secrets
 
 Go to **Repository → Settings → Secrets and variables → Actions → New repository secret** and add:
