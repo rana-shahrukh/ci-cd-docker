@@ -1,0 +1,119 @@
+name: Docker CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ranashahrukh/docker-cicd
+  IMAGE_TAG: beta
+  CONTAINER_NAME: docker-cicd
+  SERVER_PORT: 7000
+  CONTAINER_PORT: 4000
+
+jobs:
+
+  # =================================
+  # JOB 1: BUILD AND PUSH
+  # =================================
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # Step 1: Checkout source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Run tests
+      - name: Run Jest tests
+        run: npm test
+
+      # Step 5: Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_UNAME }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      # Step 6: Build and push Docker image
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+
+  # =================================
+  # JOB 2: DEPLOY TO EC2
+  # =================================
+
+  deploy_to_server:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+
+      - name: SSH and deploy container
+        uses: appleboy/ssh-action@v1.2.0
+
+        env:
+          DOCKER_UNAME: ${{ secrets.DOCKER_UNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKER_PASS }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          SERVER_PORT: ${{ env.SERVER_PORT }}
+          CONTAINER_PORT: ${{ env.CONTAINER_PORT }}
+
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: DOCKER_UNAME,DOCKER_PASS,IMAGE_NAME,IMAGE_TAG,CONTAINER_NAME,SERVER_PORT,CONTAINER_PORT
+
+          script: |
+            set -e
+
+            echo "Logging in to Docker Hub..."
+
+            echo "$DOCKER_PASS" | docker login \
+              --username "$DOCKER_UNAME" \
+              --password-stdin
+
+            echo "Pulling Docker image..."
+
+            docker pull "$IMAGE_NAME:$IMAGE_TAG"
+
+            echo "Stopping existing container..."
+
+            docker rm -f "$CONTAINER_NAME" || true
+
+            echo "Starting new container..."
+
+            docker run -d \
+              --name "$CONTAINER_NAME" \
+              --restart always \
+              -p "$SERVER_PORT:$CONTAINER_PORT" \
+              "$IMAGE_NAME:$IMAGE_TAG"
+
+            echo "Deployment completed successfully!"
