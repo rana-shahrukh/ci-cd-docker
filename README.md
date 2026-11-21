@@ -190,26 +190,6 @@ A multi-stage Dockerfile works the same way:
 
 Example structure (adapt to your own `Dockerfile`):
 
-```dockerfile
-# ---------- Stage 1: Builder ----------
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-
-# ---------- Stage 2: Production ----------
-FROM node:20-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY --from=builder /app/src ./src
-USER node
-EXPOSE 3000
-CMD ["node", "src/server.js"]
-```
-
 ---
 
 ## 🔄 CI/CD Pipeline
